@@ -2,6 +2,7 @@ const { Contact, Message } = require('../../models');
 const zapiService = require('../../utils/zapi.service');
 const geminiService = require('../../utils/gemini.service');
 const logger = require('../../utils/logger.utils');
+const socketUtils = require('../../utils/socket.utils');
 
 class BotService {
     async handleWebhook(data) {
@@ -26,6 +27,11 @@ class BotService {
             // Fetch latest contact info from Z-API if it's an incoming message (or if we want to refresh)
             let contactName = data.name || 'Unknown';
             let contactPic = data.profilePicUrl || null;
+
+            // Try to use chatName if available (often better for groups or specific contacts)
+            if (data.chatName) {
+                contactName = data.chatName;
+            }
 
             if (!fromMe) {
                 try {
@@ -69,11 +75,22 @@ class BotService {
             }
 
             // 3. Save Incoming Message
-            await Message.create({
+            const savedMessage = await Message.create({
                 contact_id: contact.id,
                 from_me: fromMe,
                 body: messageBody,
             });
+
+            // Emit Socket Event
+            try {
+                const io = socketUtils.getIo();
+                io.emit('message_received', {
+                    contact: contact,
+                    message: savedMessage
+                });
+            } catch (err) {
+                logger.warn('Socket.io not initialized or failed to emit message_received');
+            }
 
             // STOP HERE if the message is from me (the bot)
             if (fromMe) {
@@ -112,11 +129,22 @@ class BotService {
             // Send Response
             if (responseText) {
                 await zapiService.sendText(contact.phone, responseText);
-                await Message.create({
+                const savedBotMessage = await Message.create({
                     contact_id: contact.id,
                     from_me: true,
                     body: responseText,
                 });
+
+                // Emit Socket Event
+                try {
+                    const io = socketUtils.getIo();
+                    io.emit('message_sent', {
+                        contact: contact,
+                        message: savedBotMessage
+                    });
+                } catch (err) {
+                    logger.warn('Socket.io not initialized or failed to emit message_sent');
+                }
             }
         } catch (error) {
             logger.error('Error processing AI response:', error);

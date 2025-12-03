@@ -5,8 +5,15 @@ const { sequelize } = require('./src/models');
 const routes = require('./src/routes');
 const logger = require('./src/utils/logger.utils');
 
+const http = require('http');
+const socketUtils = require('./src/utils/socket.utils');
+
 const app = express();
+const server = http.createServer(app); // Create HTTP server
 const PORT = process.env.PORT || 3000;
+
+// Initialize Socket.io
+socketUtils.init(server);
 
 // Middleware
 app.use(cors());
@@ -32,9 +39,9 @@ const startServer = async () => {
         await sequelize.authenticate();
         logger.info('Database connected successfully.');
 
-        // Sync models com force true SEM ENV
-        await sequelize.sync({ force: true });
-        logger.info('Database synced with force: true (all tables dropped and recreated).');
+        // Sync models com alter: true para preservar dados
+        await sequelize.sync({ alter: true });
+        logger.info('Database synced with alter: true (data preserved).');
 
         // Seed Admin User
         const { User } = require('./src/models');
@@ -58,7 +65,7 @@ const startServer = async () => {
             logger.info('Default admin user already exists.');
         }
 
-        app.listen(PORT, () => {
+        server.listen(PORT, () => {
             logger.info(`Server running on port ${PORT}`);
         });
 
