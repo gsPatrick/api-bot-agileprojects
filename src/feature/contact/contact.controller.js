@@ -25,6 +25,7 @@ class ContactController {
         try {
             const { phone } = req.params;
             const { paused } = req.body;
+            console.log(`[TOGGLE PAUSE] Request for ${phone}, paused: ${paused} (Type: ${typeof paused})`);
             const contact = await contactService.togglePause(phone, paused);
             return response.success(res, contact, `Bot ${paused ? 'paused' : 'resumed'} for contact`);
         } catch (error) {

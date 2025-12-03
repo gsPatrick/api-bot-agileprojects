@@ -28,6 +28,31 @@ class ZApiService {
         }
     }
 
+    async sendButtonList(phone, message, buttons) {
+        try {
+            const url = `${this.baseUrl}/send-button-list`;
+            // Estrutura específica da Z-API
+            const payload = {
+                phone,
+                message,
+                buttonList: {
+                    buttons: buttons // Array de objetos { id, label }
+                }
+            };
+
+            const headers = {
+                'Client-Token': config.clientToken
+            };
+
+            const response = await axios.post(url, payload, { headers });
+            logger.info(`Button list sent to ${phone}`);
+            return response.data;
+        } catch (error) {
+            logger.error(`Failed to send button list to ${phone}`, error.response ? error.response.data : error.message);
+            throw error; // Propaga o erro para ser tratado no controller/service
+        }
+    }
+
     async getProfilePicture(phone) {
         try {
             const url = `${this.baseUrl}/profile-picture?phone=${phone}`;
