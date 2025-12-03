@@ -21,9 +21,29 @@ class BotService {
 
             const phone = data.phone;
             const messageBody = data.text.message;
-            const contactName = data.name || 'Unknown';
-            const contactPic = data.profilePicUrl || null;
-            const fromMe = data.fromMe || false; // Check if message is from the bot
+            const fromMe = data.fromMe || false;
+
+            // Fetch latest contact info from Z-API if it's an incoming message (or if we want to refresh)
+            let contactName = data.name || 'Unknown';
+            let contactPic = data.profilePicUrl || null;
+
+            if (!fromMe) {
+                try {
+                    const [profilePicData, contactInfoData] = await Promise.all([
+                        zapiService.getProfilePicture(phone),
+                        zapiService.getContactInfo(phone)
+                    ]);
+
+                    if (profilePicData && profilePicData.link) {
+                        contactPic = profilePicData.link;
+                    }
+                    if (contactInfoData && contactInfoData.name) {
+                        contactName = contactInfoData.name;
+                    }
+                } catch (err) {
+                    logger.warn(`Failed to fetch extra contact info for ${phone}`);
+                }
+            }
 
             // 2. Find or Create Contact
             let [contact, created] = await Contact.findOrCreate({
@@ -37,19 +57,25 @@ class BotService {
                 },
             });
 
-            // Update contact info if changed
-            if (contact.name !== contactName || (contactPic && contact.pic_url !== contactPic)) {
-                await contact.update({ name: contactName, pic_url: contactPic || contact.pic_url });
+            // Update contact info if changed (and we have better info)
+            if (!fromMe) {
+                const updateData = {};
+                if (contactName !== 'Unknown' && contact.name !== contactName) updateData.name = contactName;
+                if (contactPic && contact.pic_url !== contactPic) updateData.pic_url = contactPic;
+
+                if (Object.keys(updateData).length > 0) {
+                    await contact.update(updateData);
+                }
             }
 
             // 3. Save Incoming Message
             await Message.create({
                 contact_id: contact.id,
-                from_me: fromMe, // Save correct status
+                from_me: fromMe,
                 body: messageBody,
             });
 
-            // STOP HERE if the message is from me (the bot) to prevent loops
+            // STOP HERE if the message is from me (the bot)
             if (fromMe) {
                 return;
             }
