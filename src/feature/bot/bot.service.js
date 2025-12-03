@@ -6,6 +6,11 @@ class BotService {
     async handleWebhook(data) {
         try {
             // Basic validation for Z-API webhook structure
+            if (data.type === 'PresenceChatCallback' || data.type === 'MessageStatusCallback') {
+                // Ignore presence and status updates
+                return;
+            }
+
             if (!data.phone || !data.text || !data.text.message) {
                 logger.warn('Invalid webhook data', data);
                 return;
