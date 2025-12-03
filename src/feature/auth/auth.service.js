@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { User } = require('../../models');
 
 class AuthService {
-    async register(name, email, password) {
+    async register(name, email, password, bot_number) {
         const existingUser = await User.findOne({ where: { email } });
         if (existingUser) {
             throw new Error('User already exists');
@@ -16,6 +16,7 @@ class AuthService {
             name,
             email,
             password_hash,
+            bot_number,
         });
 
         return user;

@@ -18,6 +18,10 @@ module.exports = (sequelize, DataTypes) => {
             unique: true,
             allowNull: false,
         },
+        bot_number: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
         password_hash: {
             type: DataTypes.STRING,
             allowNull: false,

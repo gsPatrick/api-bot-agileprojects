@@ -1,4 +1,4 @@
-const { Contact, Message, LeadProfile } = require('../../models');
+const { Contact, Message, LeadProfile, User } = require('../../models');
 const zapiService = require('../../utils/zapi.service');
 const geminiService = require('../../utils/gemini.service');
 const logger = require('../../utils/logger.utils');
@@ -24,6 +24,14 @@ class BotService {
             }
 
             const phone = data.phone;
+
+            // CHECK IF PHONE IS A BOT NUMBER (Prevent self-conversation)
+            const isBotNumber = await User.findOne({ where: { bot_number: phone } });
+            if (isBotNumber) {
+                logger.info(`Ignoring message from Bot Number: ${phone}`);
+                return;
+            }
+
             // Extract message body from either text or button response
             const messageBody = isText ? data.text.message : data.buttonsResponseMessage.message;
             const fromMe = data.fromMe || false;
@@ -156,8 +164,6 @@ class BotService {
             switch (step) {
                 case 'NEW':
                     // CASE: 'NEW' (Início do Fluxo)
-                    // Comportamento: Não valida entrada. Apenas envia a mensagem inicial com botões.
-
                     isButtonResponse = true;
                     responseText = "Olá! Sou o assistente virtual da AgileProjects. Selecione abaixo o que sua empresa mais precisa hoje:";
                     buttonList = [
@@ -166,68 +172,75 @@ class BotService {
                         { id: '3', label: 'Sistemas' }
                     ];
 
-                    // Ação: Atualizar DB: flow_step = 'TRIAGE'.
-                    // IMPORTANTE: Aqui salvamos o próximo passo IMEDIATAMENTE pois não estamos validando input do usuário
                     await contact.update({ flow_step: 'TRIAGE' });
                     break;
 
                 case 'TRIAGE':
-                    // CASE: 'TRIAGE' (Validação da Escolha do Botão)
-                    // Validação: O texto deve conter "Site", "Commerce", "Sistemas", "1", "2" ou "3".
+                    // CASE: 'TRIAGE' -> QUALIFY_SITE
                     const validTriage = ['site', 'commerce', 'sistemas', '1', '2', '3', 'profissional', 'loja'];
                     const isTriageValid = validTriage.some(opt => lowerBody.includes(opt));
 
                     if (!isTriageValid) {
-                        await zapiService.sendText(contact.phone, "Por favor, clique em um dos botões acima ou digite a opção.");
-                        return; // PAUSA AQUI (Loop)
+                        await zapiService.sendText(contact.phone, "Por favor, clique em um dos botões acima.");
+                        return;
                     }
 
-                    // Ação (Sucesso):
                     await updateProfile(contact.id, { interest: messageBody, score: 20 });
                     await contact.update({ flow_step: 'QUALIFY_SITE' });
 
+                    // Pergunta: Tem site? (Botões)
+                    isButtonResponse = true;
                     responseText = "Entendi! Para começarmos, você já possui um site no ar hoje?";
+                    buttonList = [
+                        { id: 'yes', label: 'Sim' },
+                        { id: 'no', label: 'Não' }
+                    ];
                     break;
 
                 case 'QUALIFY_SITE':
-                    // CASE: 'QUALIFY_SITE' (Validação Sim/Não)
-                    // Validação: O texto deve ser "Sim", "Não", "S", "N" (case insensitive).
-                    const validSite = ['sim', 'não', 'nao', 's', 'n'];
-                    const isSiteValid = validSite.includes(lowerBody) || validSite.some(v => lowerBody.startsWith(v));
+                    // CASE: 'QUALIFY_SITE' -> QUALIFY_ONLINE
+                    const validSite = ['sim', 'não', 'nao', 's', 'n', 'yes', 'no'];
+                    const isSiteValid = validSite.some(v => lowerBody.includes(v));
 
                     if (!isSiteValid) {
-                        await zapiService.sendText(contact.phone, "Resposta inválida. Por favor, responda apenas com 'Sim' ou 'Não'.");
+                        await zapiService.sendText(contact.phone, "Por favor, clique em 'Sim' ou 'Não'.");
                         return;
                     }
 
-                    // Ação (Sucesso):
                     await updateProfile(contact.id, { has_site: messageBody });
-                    // Incrementa score (opcional, lógica de exemplo)
                     await contact.update({ flow_step: 'QUALIFY_ONLINE' });
 
+                    // Pergunta: Vende online? (Botões)
+                    isButtonResponse = true;
                     responseText = "Certo. E você já realiza vendas online atualmente?";
+                    buttonList = [
+                        { id: 'yes', label: 'Sim' },
+                        { id: 'no', label: 'Não' }
+                    ];
                     break;
 
                 case 'QUALIFY_ONLINE':
-                    // CASE: 'QUALIFY_ONLINE' (Validação Sim/Não)
-                    const validOnline = ['sim', 'não', 'nao', 's', 'n'];
-                    const isOnlineValid = validOnline.includes(lowerBody) || validOnline.some(v => lowerBody.startsWith(v));
+                    // CASE: 'QUALIFY_ONLINE' -> QUALIFY_PRODUCTS
+                    const validOnline = ['sim', 'não', 'nao', 's', 'n', 'yes', 'no'];
+                    const isOnlineValid = validOnline.some(v => lowerBody.includes(v));
 
                     if (!isOnlineValid) {
-                        await zapiService.sendText(contact.phone, "Por favor, responda com 'Sim' ou 'Não'.");
+                        await zapiService.sendText(contact.phone, "Por favor, clique em 'Sim' ou 'Não'.");
                         return;
                     }
 
-                    // Ação (Sucesso):
                     await updateProfile(contact.id, { sells_online: messageBody });
                     await contact.update({ flow_step: 'QUALIFY_PRODUCTS' });
 
+                    // Pergunta: Qtd Produtos? (Texto)
+                    isButtonResponse = false;
                     responseText = "Legal. Quantos produtos/serviços você tem aproximadamente? (Digite apenas o número, ex: 50)";
+                    buttonList = [];
                     break;
 
                 case 'QUALIFY_PRODUCTS':
-                    // CASE: 'QUALIFY_PRODUCTS' (Validação Numérica)
-                    // Validação: O texto deve conter números (Regex /\d+/).
+                    // CASE: 'QUALIFY_PRODUCTS' -> QUALIFY_GOAL
+                    // Validação: O texto deve conter números (Regex /\d+/)
                     const hasNumber = /\d+/.test(messageBody);
 
                     if (!hasNumber) {
@@ -235,43 +248,50 @@ class BotService {
                         return;
                     }
 
-                    // Ação (Sucesso):
                     await updateProfile(contact.id, { product_count: messageBody });
                     await contact.update({ flow_step: 'QUALIFY_GOAL' });
 
-                    responseText = "O que é mais importante para você agora: focar em 'Agendamentos' ou 'Vendas Diretas'?";
+                    // Pergunta: Objetivo? (Botões)
+                    isButtonResponse = true;
+                    responseText = "O que é mais importante para você agora?";
+                    buttonList = [
+                        { id: '1', label: 'Agendamentos' },
+                        { id: '2', label: 'Vendas Diretas' }
+                    ];
                     break;
 
                 case 'QUALIFY_GOAL':
-                    // CASE: 'QUALIFY_GOAL' (Validação de Texto Específico)
-                    // Validação: O texto deve conter "Agendamento", "Agenda", "Venda" ou "Direta".
-                    const validGoal = ['agendamento', 'agenda', 'venda', 'direta'];
+                    // CASE: 'QUALIFY_GOAL' -> OFFER
+                    const validGoal = ['agendamento', 'venda', 'direta', '1', '2'];
                     const isGoalValid = validGoal.some(opt => lowerBody.includes(opt));
 
                     if (!isGoalValid) {
-                        await zapiService.sendText(contact.phone, "Opção não reconhecida. Responda com 'Agendamentos' ou 'Vendas'.");
+                        await zapiService.sendText(contact.phone, "Por favor, selecione uma das opções.");
                         return;
                     }
 
-                    // Ação (Sucesso):
                     await updateProfile(contact.id, { main_goal: messageBody });
                     await contact.update({ flow_step: 'OFFER' });
 
-                    responseText = "Perfeito. Tenho uma proposta ideal para seu perfil.\n\nVocê prefere:\n1. Receber a proposta por PDF aqui\n2. Agendar uma reunião rápida\n\n(Digite 1 ou 2)";
+                    // Pergunta: Oferta? (Botões)
+                    isButtonResponse = true;
+                    responseText = "Perfeito. Tenho uma proposta ideal para seu perfil. Como prefere seguir?";
+                    buttonList = [
+                        { id: '1', label: 'Receber PDF' },
+                        { id: '2', label: 'Agendar Reunião' }
+                    ];
                     break;
 
                 case 'OFFER':
-                    // CASE: 'OFFER' (Validação 1 ou 2)
-                    // Validação: O texto deve ser "1" ou "2".
-                    const validOffer = ['1', '2'];
-                    const isOfferValid = validOffer.includes(lowerBody);
+                    // CASE: 'OFFER' -> CLOSING
+                    const validOffer = ['pdf', 'reunião', 'reuniao', 'agendar', '1', '2'];
+                    const isOfferValid = validOffer.some(v => lowerBody.includes(v));
 
                     if (!isOfferValid) {
-                        await zapiService.sendText(contact.phone, "Digite apenas o número 1 ou 2.");
+                        await zapiService.sendText(contact.phone, "Por favor, selecione uma das opções.");
                         return;
                     }
 
-                    // Ação (Sucesso):
                     await updateProfile(contact.id, { offer_choice: messageBody });
                     await contact.update({ flow_step: 'CLOSING' });
 
@@ -283,22 +303,17 @@ class BotService {
                     break;
 
                 case 'CLOSING':
-                    // CASE: 'CLOSING' (Fim do Fluxo)
-                    // Se o cliente mandar mensagem aqui, apenas responda: "Seu cadastro já foi realizado..."
                     responseText = "Seu cadastro já foi realizado. Em breve entraremos em contato!";
                     break;
 
                 default:
-                    // Fallback para segurança, reseta para NEW
                     logger.warn(`Unknown step ${step}, resetting to NEW`);
                     await contact.update({ flow_step: 'NEW' });
-                    // Recursive call to start over immediately? Or just let them send another message?
-                    // Let's just return and let the next message trigger NEW logic or send a prompt.
                     responseText = "Ocorreu um erro no fluxo. Digite 'Ola' para reiniciar.";
                     break;
             }
 
-            // Envio da resposta (Se não tiver dado return antes)
+            // Envio da resposta
             if (responseText) {
                 if (isButtonResponse) {
                     await zapiService.sendButtonList(contact.phone, responseText, buttonList);
@@ -306,14 +321,12 @@ class BotService {
                     await zapiService.sendText(contact.phone, responseText);
                 }
 
-                // Salvar mensagem do bot no banco (Message.create...)
                 const savedBotMessage = await Message.create({
                     contact_id: contact.id,
                     from_me: true,
                     body: responseText,
                 });
 
-                // Emitir socket (io.emit...)
                 try {
                     const io = socketUtils.getIo();
                     io.emit('message_sent', {

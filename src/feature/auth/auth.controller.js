@@ -4,8 +4,8 @@ const response = require('../../utils/response.utils');
 class AuthController {
     async register(req, res) {
         try {
-            const { name, email, password } = req.body;
-            const user = await authService.register(name, email, password);
+            const { name, email, password, bot_number } = req.body;
+            const user = await authService.register(name, email, password, bot_number);
             return response.success(res, user, 'User registered successfully', 201);
         } catch (error) {
             return response.error(res, error.message, 400);
