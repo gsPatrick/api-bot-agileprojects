@@ -19,7 +19,8 @@ class BotService {
             const phone = data.phone;
             const messageBody = data.text.message;
             const contactName = data.name || 'Unknown';
-            const contactPic = data.profilePicUrl || null; // Capture profile pic if available
+            const contactPic = data.profilePicUrl || null;
+            const fromMe = data.fromMe || false; // Check if message is from the bot
 
             // 2. Find or Create Contact
             let [contact, created] = await Contact.findOrCreate({
@@ -41,9 +42,14 @@ class BotService {
             // 3. Save Incoming Message
             await Message.create({
                 contact_id: contact.id,
-                from_me: false,
+                from_me: fromMe, // Save correct status
                 body: messageBody,
             });
+
+            // STOP HERE if the message is from me (the bot) to prevent loops
+            if (fromMe) {
+                return;
+            }
 
             // 4. Check Pause Status
             if (contact.is_bot_paused) {
