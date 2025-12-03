@@ -5,6 +5,13 @@ class ContactService {
     async listContacts() {
         return await Contact.findAll({
             order: [['last_interaction', 'DESC']],
+            include: [
+                {
+                    model: require('../../models').LeadProfile,
+                    as: 'profile', // Alias definido no model
+                    attributes: ['interest', 'has_site', 'sells_online', 'product_count', 'main_goal', 'score'] // Retornar apenas dados úteis
+                }
+            ]
         });
     }
 
@@ -15,7 +22,7 @@ class ContactService {
         }
         return await Message.findAll({
             where: { contact_id: contact.id },
-            order: [['timestamp', 'ASC']],
+            order: [['createdAt', 'ASC']],
         });
     }
 

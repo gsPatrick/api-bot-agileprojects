@@ -4,6 +4,7 @@ module.exports = (sequelize, DataTypes) => {
     class Contact extends Model {
         static associate(models) {
             Contact.hasMany(models.Message, { foreignKey: 'contact_id', as: 'messages' });
+            Contact.hasOne(models.LeadProfile, { foreignKey: 'contact_id', as: 'profile' });
         }
     }
     Contact.init({

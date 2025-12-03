@@ -39,9 +39,9 @@ const startServer = async () => {
         await sequelize.authenticate();
         logger.info('Database connected successfully.');
 
-        // Sync models com alter: true para preservar dados
-        await sequelize.sync({ alter: true });
-        logger.info('Database synced with alter: true (data preserved).');
+        // Sync models com force: true para resetar e aplicar schema
+        await sequelize.sync({ force: true });
+        logger.info('Database synced with force: true (DATA RESET).');
 
         // Seed Admin User
         const { User } = require('./src/models');

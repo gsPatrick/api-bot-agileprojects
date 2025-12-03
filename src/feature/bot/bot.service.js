@@ -1,4 +1,4 @@
-const { Contact, Message } = require('../../models');
+const { Contact, Message, LeadProfile } = require('../../models');
 const zapiService = require('../../utils/zapi.service');
 const geminiService = require('../../utils/gemini.service');
 const logger = require('../../utils/logger.utils');
@@ -136,6 +136,15 @@ class BotService {
         // Helper para normalizar texto
         const lowerBody = messageBody ? messageBody.trim().toLowerCase() : '';
 
+        // Helper para atualizar ou criar o perfil
+        const updateProfile = async (contactId, data) => {
+            const [profile] = await LeadProfile.findOrCreate({
+                where: { contact_id: contactId },
+                defaults: data
+            });
+            await profile.update(data);
+        };
+
         logger.info(`Processing Flow Step: ${step} for ${contact.phone}. Message: ${messageBody}`);
 
         try {
@@ -169,11 +178,8 @@ class BotService {
                     }
 
                     // Ação (Sucesso):
-                    // Atualizar DB: flow_data: { ...contact.flow_data, interest: messageBody }, flow_step = 'QUALIFY_SITE'.
-                    await contact.update({
-                        flow_data: { ...contact.flow_data, interest: messageBody },
-                        flow_step: 'QUALIFY_SITE'
-                    });
+                    await updateProfile(contact.id, { interest: messageBody, score: 20 });
+                    await contact.update({ flow_step: 'QUALIFY_SITE' });
 
                     responseText = "Entendi! Para começarmos, você já possui um site no ar hoje?";
                     break;
@@ -182,9 +188,6 @@ class BotService {
                     // CASE: 'QUALIFY_SITE' (Validação Sim/Não)
                     // Validação: O texto deve ser "Sim", "Não", "S", "N" (case insensitive).
                     const validSite = ['sim', 'não', 'nao', 's', 'n'];
-                    // Check exact match or simple inclusion if appropriate, but "Sim"/"Não" usually implies exact or starts with
-                    // Using includes for flexibility or exact match? Prompt says "O texto deve ser..." implying exact or close to it.
-                    // Let's use a loose check that covers common variations.
                     const isSiteValid = validSite.includes(lowerBody) || validSite.some(v => lowerBody.startsWith(v));
 
                     if (!isSiteValid) {
@@ -193,10 +196,9 @@ class BotService {
                     }
 
                     // Ação (Sucesso):
-                    await contact.update({
-                        flow_data: { ...contact.flow_data, has_site: messageBody },
-                        flow_step: 'QUALIFY_ONLINE'
-                    });
+                    await updateProfile(contact.id, { has_site: messageBody });
+                    // Incrementa score (opcional, lógica de exemplo)
+                    await contact.update({ flow_step: 'QUALIFY_ONLINE' });
 
                     responseText = "Certo. E você já realiza vendas online atualmente?";
                     break;
@@ -212,10 +214,8 @@ class BotService {
                     }
 
                     // Ação (Sucesso):
-                    await contact.update({
-                        flow_data: { ...contact.flow_data, sells_online: messageBody },
-                        flow_step: 'QUALIFY_PRODUCTS'
-                    });
+                    await updateProfile(contact.id, { sells_online: messageBody });
+                    await contact.update({ flow_step: 'QUALIFY_PRODUCTS' });
 
                     responseText = "Legal. Quantos produtos/serviços você tem aproximadamente? (Digite apenas o número, ex: 50)";
                     break;
@@ -231,10 +231,8 @@ class BotService {
                     }
 
                     // Ação (Sucesso):
-                    await contact.update({
-                        flow_data: { ...contact.flow_data, product_count: messageBody },
-                        flow_step: 'QUALIFY_GOAL'
-                    });
+                    await updateProfile(contact.id, { product_count: messageBody });
+                    await contact.update({ flow_step: 'QUALIFY_GOAL' });
 
                     responseText = "O que é mais importante para você agora: focar em 'Agendamentos' ou 'Vendas Diretas'?";
                     break;
@@ -251,10 +249,8 @@ class BotService {
                     }
 
                     // Ação (Sucesso):
-                    await contact.update({
-                        flow_data: { ...contact.flow_data, main_goal: messageBody },
-                        flow_step: 'OFFER'
-                    });
+                    await updateProfile(contact.id, { main_goal: messageBody });
+                    await contact.update({ flow_step: 'OFFER' });
 
                     responseText = "Perfeito. Tenho uma proposta ideal para seu perfil.\n\nVocê prefere:\n1. Receber a proposta por PDF aqui\n2. Agendar uma reunião rápida\n\n(Digite 1 ou 2)";
                     break;
@@ -271,15 +267,13 @@ class BotService {
                     }
 
                     // Ação (Sucesso):
-                    await contact.update({
-                        flow_data: { ...contact.flow_data, offer_choice: messageBody },
-                        flow_step: 'CLOSING'
-                    });
+                    await updateProfile(contact.id, { offer_choice: messageBody });
+                    await contact.update({ flow_step: 'CLOSING' });
 
                     responseText = "Combinado! Um de nossos especialistas já recebeu seu perfil e entrará em contato em instantes.";
 
                     // Logar no console o perfil completo do cliente
-                    const finalProfile = { ...contact.flow_data, offer_choice: messageBody };
+                    const finalProfile = await LeadProfile.findOne({ where: { contact_id: contact.id } });
                     logger.info(`[FULL PROFILE COLLECTED] Contact: ${contact.phone}, Data: ${JSON.stringify(finalProfile, null, 2)}`);
                     break;
 
