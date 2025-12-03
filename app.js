@@ -37,6 +37,28 @@ const startServer = async () => {
         await sequelize.sync();
         logger.info('Database synced.');
 
+        // Seed Admin User
+        const { User } = require('./src/models');
+        const bcrypt = require('bcryptjs');
+
+        const adminEmail = 'agileprojectsweb@gmail.com';
+        const adminPassword = 'Agileprojects123';
+
+        const existingAdmin = await User.findOne({ where: { email: adminEmail } });
+        if (!existingAdmin) {
+            const salt = await bcrypt.genSalt(10);
+            const password_hash = await bcrypt.hash(adminPassword, salt);
+
+            await User.create({
+                name: 'Agile Admin',
+                email: adminEmail,
+                password_hash: password_hash,
+            });
+            logger.info('Default admin user created.');
+        } else {
+            logger.info('Default admin user already exists.');
+        }
+
         app.listen(PORT, () => {
             logger.info(`Server running on port ${PORT}`);
         });
