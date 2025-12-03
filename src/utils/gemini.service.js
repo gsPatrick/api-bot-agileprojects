@@ -6,9 +6,10 @@ class GeminiService {
     constructor() {
         if (process.env.GEMINI_API_KEY) {
             this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            // Use o modelo correto e disponível no tier gratuito
+            // Use modelos ativos: gemini-2.5-flash (recomendado para free tier)
+            // Outras opções: gemini-2.5-flash-lite, gemini-2.0-flash
             this.model = this.genAI.getGenerativeModel({
-                model: 'gemini-1.5-flash-latest' // ou 'gemini-pro'
+                model: 'gemini-2.5-flash' // Modelo mais recente e rápido
             });
         } else {
             logger.warn('GEMINI_API_KEY is not set. AI features will be disabled.');
@@ -36,7 +37,7 @@ class GeminiService {
                 history: validHistory,
                 generationConfig: {
                     maxOutputTokens: 200,
-                    temperature: 0.9, // Adicione configurações opcionais
+                    temperature: 0.9,
                 },
             });
 
@@ -46,7 +47,6 @@ class GeminiService {
         } catch (error) {
             logger.error('Error generating AI response:', error);
 
-            // Log mais detalhado para debug
             if (error.status) {
                 logger.error(`Status: ${error.status}, Message: ${error.message}`);
             }
