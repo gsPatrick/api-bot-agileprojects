@@ -59,7 +59,8 @@ const startServer = async () => {
                 name: 'Agile Admin',
                 email: adminEmail,
                 password_hash: password_hash,
-                bot_number: '557182862912', // Bot number to ignore
+                bot_number: '557182862912', // Bot number to ignore (Admin)
+                notification_number: '557182862912', // Number to receive notifications
             });
             logger.info('Default admin user created.');
         } else {

@@ -22,6 +22,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING,
             allowNull: true,
         },
+        notification_number: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
         password_hash: {
             type: DataTypes.STRING,
             allowNull: false,

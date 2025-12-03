@@ -1,4 +1,4 @@
-const { Contact, Message, LeadProfile, User } = require('../../models');
+const { Contact, Message, LeadProfile, User, sequelize } = require('../../models');
 const zapiService = require('../../utils/zapi.service');
 const geminiService = require('../../utils/gemini.service');
 const logger = require('../../utils/logger.utils');
@@ -300,6 +300,38 @@ class BotService {
                     // Logar no console o perfil completo do cliente
                     const finalProfile = await LeadProfile.findOne({ where: { contact_id: contact.id } });
                     logger.info(`[FULL PROFILE COLLECTED] Contact: ${contact.phone}, Data: ${JSON.stringify(finalProfile, null, 2)}`);
+
+                    // NOTIFICATION SYSTEM
+                    try {
+                        // Find a user with a notification number (prioritize admin or just take the first one)
+                        // In a real multi-tenant app, this would be linked to the specific account.
+                        // Here we just look for any user with a notification number.
+                        const adminUser = await User.findOne({
+                            where: sequelize.literal("notification_number IS NOT NULL AND notification_number != ''")
+                        });
+
+                        if (adminUser && adminUser.notification_number) {
+                            const offerText = messageBody === '1' || messageBody.toLowerCase().includes('pdf') ? 'Receber PDF' : 'Agendar Reunião';
+
+                            const summaryMessage = `🔔 *NOVO LEAD QUALIFICADO* 🔔\n\n` +
+                                `👤 *Nome:* ${contact.name}\n` +
+                                `📱 *WhatsApp:* ${contact.phone}\n\n` +
+                                `📝 *Respostas:*\n` +
+                                `- Interesse: ${finalProfile.interest}\n` +
+                                `- Site: ${finalProfile.has_site}\n` +
+                                `- Vendas Online: ${finalProfile.sells_online}\n` +
+                                `- Produtos: ${finalProfile.product_count}\n` +
+                                `- Objetivo: ${finalProfile.main_goal}\n\n` +
+                                `🎯 *DECISÃO FINAL:* ${offerText}`;
+
+                            await zapiService.sendText(adminUser.notification_number, summaryMessage);
+                            logger.info(`Notification sent to ${adminUser.notification_number}`);
+                        } else {
+                            logger.warn('No notification number found for any user.');
+                        }
+                    } catch (notifyErr) {
+                        logger.error('Failed to send notification:', notifyErr);
+                    }
                     break;
 
                 case 'CLOSING':
