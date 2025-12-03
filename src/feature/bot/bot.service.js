@@ -11,6 +11,9 @@ class BotService {
                 return;
             }
 
+            // LOG FULL WEBHOOK DATA FOR DEBUGGING
+            logger.info('Received Webhook Data:', JSON.stringify(data, null, 2));
+
             if (!data.phone || !data.text || !data.text.message) {
                 // logger.warn('Invalid webhook data', data); // Reduce noise
                 return;
