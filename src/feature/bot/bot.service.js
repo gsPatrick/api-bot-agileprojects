@@ -103,6 +103,19 @@ class BotService {
                 return;
             }
 
+            // DEBUG: Log current flow step
+            logger.info(`Processing message for contact ${phone}. Current Flow Step: ${contact.flow_step}`);
+
+            // RESET COMMAND FOR TESTING
+            if (messageBody.trim().toLowerCase() === '#reset') {
+                await contact.update({
+                    flow_step: 'NEW',
+                    flow_data: {}
+                });
+                await zapiService.sendText(contact.phone, "Fluxo reiniciado. Envie 'Ola' para começar.");
+                return;
+            }
+
             // 5. SDR Sales Flow State Machine
             await this.processFlow(contact, messageBody);
 
@@ -113,6 +126,8 @@ class BotService {
 
     async processFlow(contact, messageBody) {
         const step = contact.flow_step;
+        logger.info(`Entering processFlow. Step: ${step}, Message: ${messageBody}`);
+
         let nextStep = step;
         let responseText = null;
         let updateData = {};
@@ -242,6 +257,7 @@ class BotService {
     }
 
     async processAIResponse(contact, messageBody) {
+        logger.info(`Processing AI Response for contact ${contact.phone}`);
         try {
             // Fetch recent history for context (last 10 messages)
             const history = await Message.findAll({
@@ -255,6 +271,8 @@ class BotService {
 
             // Generate Response
             const responseText = await geminiService.generateResponse(chronologicalHistory, messageBody);
+
+            logger.info(`Gemini Response: ${responseText}`);
 
             // Send Response
             if (responseText) {
