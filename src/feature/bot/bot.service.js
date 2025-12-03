@@ -208,15 +208,28 @@ class BotService {
                     break;
 
                 case 'AI_CHAT':
-                    // Fallback to Gemini
-                    await this.processAIResponse(contact, messageBody);
-                    return; // Exit here, processAIResponse handles sending
+                    // REMOVED AI AS PER USER REQUEST ("TIRA A IA")
+                    // If user sends a greeting, restart the flow.
+                    const lowerMsg = messageBody.toLowerCase().trim();
+                    if (['ola', 'olá', 'oi', 'start', 'início', 'inicio', 'começar'].includes(lowerMsg)) {
+                        await contact.update({ flow_step: 'NEW', flow_data: {} });
+                        // Recursively call processFlow to trigger the NEW step immediately
+                        contact.flow_step = 'NEW';
+                        await this.processFlow(contact, messageBody);
+                        return;
+                    }
+
+                    // Otherwise, just inform that the flow is done.
+                    responseText = "Seu atendimento foi registrado. Um especialista entrará em contato em breve.\n\nPara iniciar um novo atendimento, digite 'Ola'.";
+                    // We don't change the step, stay in AI_CHAT (which is effectively 'COMPLETED' now)
+                    break;
 
                 default:
-                    // Fallback if state is unknown, maybe reset to NEW or go to AI?
-                    // Let's assume AI_CHAT for safety if unknown
-                    logger.warn(`Unknown flow step ${step} for contact ${contact.phone}. Defaulting to AI.`);
-                    await this.processAIResponse(contact, messageBody);
+                    // Fallback: Reset to NEW if unknown
+                    logger.warn(`Unknown flow step ${step} for contact ${contact.phone}. Resetting to NEW.`);
+                    await contact.update({ flow_step: 'NEW', flow_data: {} });
+                    contact.flow_step = 'NEW';
+                    await this.processFlow(contact, messageBody);
                     return;
             }
 
@@ -244,11 +257,14 @@ class BotService {
                 }
 
                 // 4. Update Contact State
-                const newFlowData = { ...contact.flow_data, ...updateData };
-                await contact.update({
-                    flow_step: nextStep,
-                    flow_data: newFlowData
-                });
+                // Only update if nextStep is different and we haven't already updated it manually (like in the restart case)
+                if (nextStep !== step) {
+                    const newFlowData = { ...contact.flow_data, ...updateData };
+                    await contact.update({
+                        flow_step: nextStep,
+                        flow_data: newFlowData
+                    });
+                }
             }
 
         } catch (err) {
@@ -256,48 +272,49 @@ class BotService {
         }
     }
 
-    async processAIResponse(contact, messageBody) {
-        logger.info(`Processing AI Response for contact ${contact.phone}`);
-        try {
-            // Fetch recent history for context (last 10 messages)
-            const history = await Message.findAll({
-                where: { contact_id: contact.id },
-                order: [['createdAt', 'DESC']],
-                limit: 10,
-            });
+    // AI METHOD REMOVED/UNUSED
+    // async processAIResponse(contact, messageBody) {
+    //     logger.info(`Processing AI Response for contact ${contact.phone}`);
+    //     try {
+    //         // Fetch recent history for context (last 10 messages)
+    //         const history = await Message.findAll({
+    //             where: { contact_id: contact.id },
+    //             order: [['createdAt', 'DESC']],
+    //             limit: 10,
+    //         });
 
-            // Reverse to chronological order
-            const chronologicalHistory = history.reverse();
+    //         // Reverse to chronological order
+    //         const chronologicalHistory = history.reverse();
 
-            // Generate Response
-            const responseText = await geminiService.generateResponse(chronologicalHistory, messageBody);
+    //         // Generate Response
+    //         const responseText = await geminiService.generateResponse(chronologicalHistory, messageBody);
 
-            logger.info(`Gemini Response: ${responseText}`);
+    //         logger.info(`Gemini Response: ${responseText}`);
 
-            // Send Response
-            if (responseText) {
-                await zapiService.sendText(contact.phone, responseText);
-                const savedBotMessage = await Message.create({
-                    contact_id: contact.id,
-                    from_me: true,
-                    body: responseText,
-                });
+    //         // Send Response
+    //         if (responseText) {
+    //             await zapiService.sendText(contact.phone, responseText);
+    //             const savedBotMessage = await Message.create({
+    //                 contact_id: contact.id,
+    //                 from_me: true,
+    //                 body: responseText,
+    //             });
 
-                // Emit Socket Event
-                try {
-                    const io = socketUtils.getIo();
-                    io.emit('message_sent', {
-                        contact: contact,
-                        message: savedBotMessage
-                    });
-                } catch (err) {
-                    logger.warn('Socket.io not initialized or failed to emit message_sent');
-                }
-            }
-        } catch (error) {
-            logger.error('Error processing AI response:', error);
-        }
-    }
+    //             // Emit Socket Event
+    //             try {
+    //                 const io = socketUtils.getIo();
+    //                 io.emit('message_sent', {
+    //                     contact: contact,
+    //                     message: savedBotMessage
+    //                 });
+    //             } catch (err) {
+    //                 logger.warn('Socket.io not initialized or failed to emit message_sent');
+    //             }
+    //         }
+    //     } catch (error) {
+    //         logger.error('Error processing AI response:', error);
+    //     }
+    // }
 }
 
 module.exports = new BotService();
