@@ -60,7 +60,7 @@ const startServer = async () => {
                 email: adminEmail,
                 password_hash: password_hash,
                 bot_number: '5511954728628', // Bot number to ignore (Admin)
-                notification_number: '5571983141335', // Number to receive notifications
+                notification_number: '5518997019096', // Number to receive notifications
             });
             logger.info('Default admin user created.');
         } else {
