@@ -15,7 +15,11 @@ class ZApiService {
                 message,
             };
 
-            const response = await axios.post(url, payload);
+            const headers = {
+                'Client-Token': config.clientToken
+            };
+
+            const response = await axios.post(url, payload, { headers });
             logger.info(`Message sent to ${phone}`, { messageId: response.data.messageId });
             return response.data;
         } catch (error) {
