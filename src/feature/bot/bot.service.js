@@ -15,12 +15,17 @@ class BotService {
             // LOG FULL WEBHOOK DATA FOR DEBUGGING
             logger.info('Received Webhook Data:', JSON.stringify(data, null, 2));
 
-            if (!data.phone || !data.text || !data.text.message) {
+            // Check for text message OR button response
+            const isText = data.text && data.text.message;
+            const isButton = data.buttonsResponseMessage && data.buttonsResponseMessage.message;
+
+            if (!data.phone || (!isText && !isButton)) {
                 return;
             }
 
             const phone = data.phone;
-            const messageBody = data.text.message;
+            // Extract message body from either text or button response
+            const messageBody = isText ? data.text.message : data.buttonsResponseMessage.message;
             const fromMe = data.fromMe || false;
 
             // Fetch latest contact info from Z-API if it's an incoming message (or if we want to refresh)
