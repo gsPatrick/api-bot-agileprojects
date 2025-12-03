@@ -32,10 +32,9 @@ const startServer = async () => {
         await sequelize.authenticate();
         logger.info('Database connected successfully.');
 
-        // Sync models (use { force: true } only for dev to reset DB)
-        // await sequelize.sync({ alter: true }); 
-        await sequelize.sync();
-        logger.info('Database synced.');
+        // Sync models com force true SEM ENV
+        await sequelize.sync({ force: true });
+        logger.info('Database synced with force: true (all tables dropped and recreated).');
 
         // Seed Admin User
         const { User } = require('./src/models');
@@ -62,10 +61,12 @@ const startServer = async () => {
         app.listen(PORT, () => {
             logger.info(`Server running on port ${PORT}`);
         });
+
     } catch (error) {
         logger.error('Unable to connect to the database:', error);
         process.exit(1);
     }
 };
+
 
 startServer();
