@@ -292,7 +292,11 @@ class BotService {
                         return;
                     }
 
-                    await updateProfile(contact.id, { offer_choice: messageBody });
+                    let choiceValue = messageBody;
+                    if (lowerBody.includes('pdf') || lowerBody === '1') choiceValue = '1';
+                    else if (lowerBody.includes('reuniao') || lowerBody.includes('reunião') || lowerBody.includes('agendar') || lowerBody === '2') choiceValue = '2';
+
+                    await updateProfile(contact.id, { offer_choice: choiceValue });
                     await contact.update({ flow_step: 'CLOSING' });
 
                     responseText = "Combinado! Um de nossos especialistas já recebeu seu perfil e entrará em contato em instantes.";
