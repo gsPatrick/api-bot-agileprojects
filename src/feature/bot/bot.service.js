@@ -1,126 +1,90 @@
 const { Contact, Message } = require('../../models');
 const zapiService = require('../../utils/zapi.service');
+const geminiService = require('../../utils/gemini.service');
 const logger = require('../../utils/logger.utils');
 
 class BotService {
     async handleWebhook(data) {
         try {
-            // Basic validation for Z-API webhook structure
-            if (data.type === 'PresenceChatCallback' || data.type === 'MessageStatusCallback') {
-                // Ignore presence and status updates
+            // 1. Validate & Ignore Events
+            if (['PresenceChatCallback', 'MessageStatusCallback', 'DeliveryCallback'].includes(data.type)) {
                 return;
             }
 
             if (!data.phone || !data.text || !data.text.message) {
-                logger.warn('Invalid webhook data', data);
+                // logger.warn('Invalid webhook data', data); // Reduce noise
                 return;
             }
 
             const phone = data.phone;
             const messageBody = data.text.message;
             const contactName = data.name || 'Unknown';
+            const contactPic = data.profilePicUrl || null; // Capture profile pic if available
 
-            // 1. Find or Create Contact
+            // 2. Find or Create Contact
             let [contact, created] = await Contact.findOrCreate({
                 where: { phone },
                 defaults: {
                     name: contactName,
-                    flow_step: 'NEW',
+                    pic_url: contactPic,
+                    flow_step: 'AI_CHAT',
                     flow_data: {},
                     last_interaction: new Date(),
                 },
             });
 
-            // 2. Save Incoming Message
+            // Update contact info if changed
+            if (contact.name !== contactName || (contactPic && contact.pic_url !== contactPic)) {
+                await contact.update({ name: contactName, pic_url: contactPic || contact.pic_url });
+            }
+
+            // 3. Save Incoming Message
             await Message.create({
                 contact_id: contact.id,
                 from_me: false,
                 body: messageBody,
             });
 
-            // 3. Check Pause Status
+            // 4. Check Pause Status
             if (contact.is_bot_paused) {
                 logger.info(`Bot is paused for contact ${phone}. Ignoring message.`);
                 return;
             }
 
-            // 4. State Machine
-            await this.processFlow(contact, messageBody);
+            // 5. Generate AI Response
+            await this.processAIResponse(contact, messageBody);
 
         } catch (error) {
             logger.error('Error handling webhook', error);
         }
     }
 
-    async processFlow(contact, messageBody) {
-        let nextStep = contact.flow_step;
-        let responseText = '';
-        let flowData = { ...contact.flow_data };
-
-        switch (contact.flow_step) {
-            case 'NEW':
-                responseText = 'Olá! Bem-vindo. Você precisa mais de: (1) um site que te represente, (2) vender produtos online, ou (3) automatizar atendimentos?';
-                nextStep = 'TRIAGE_1';
-                break;
-
-            case 'TRIAGE_1':
-                flowData.goal = messageBody;
-                responseText = 'Entendi. Tem site hoje?';
-                nextStep = 'TRIAGE_2';
-                break;
-
-            case 'TRIAGE_2':
-                flowData.has_site = messageBody;
-                responseText = 'Já vende online?';
-                nextStep = 'TRIAGE_3';
-                break;
-
-            case 'TRIAGE_3':
-                flowData.sells_online = messageBody;
-                responseText = 'Quantos produtos tem?';
-                nextStep = 'TRIAGE_4';
-                break;
-
-            case 'TRIAGE_4':
-                flowData.product_count = messageBody;
-                responseText = 'Quer agendamentos ou vendas?';
-                nextStep = 'OFFER';
-                break;
-
-            case 'OFFER':
-                flowData.preference = messageBody;
-                responseText = 'Tenho duas opções para você: Receber proposta agora ou Agendar uma call rápida.';
-                nextStep = 'CLOSING';
-                break;
-
-            case 'CLOSING':
-                flowData.closing_choice = messageBody;
-                responseText = 'Tenho vagas de entrega ainda esse mês. Quer que eu envie sua proposta primeiro?';
-                // Stay in CLOSING or move to END, for now let's keep it open or maybe 'DONE'
-                // nextStep = 'DONE'; 
-                break;
-
-            default:
-                // If flow is done or unknown, maybe just echo or do nothing
-                // responseText = 'Posso ajudar em algo mais?';
-                return;
-        }
-
-        // Update Contact State
-        await contact.update({
-            flow_step: nextStep,
-            flow_data: flowData,
-            last_interaction: new Date(),
-        });
-
-        // Send Response
-        if (responseText) {
-            await zapiService.sendText(contact.phone, responseText);
-            await Message.create({
-                contact_id: contact.id,
-                from_me: true,
-                body: responseText,
+    async processAIResponse(contact, messageBody) {
+        try {
+            // Fetch recent history for context (last 10 messages)
+            const history = await Message.findAll({
+                where: { contact_id: contact.id },
+                order: [['createdAt', 'DESC']],
+                limit: 10,
             });
+
+            // Reverse to chronological order
+            const chronologicalHistory = history.reverse();
+
+            // Generate Response
+            const responseText = await geminiService.generateResponse(chronologicalHistory, messageBody);
+
+            // Send Response
+            if (responseText) {
+                await zapiService.sendText(contact.phone, responseText);
+                await Message.create({
+                    contact_id: contact.id,
+                    from_me: true,
+                    body: responseText,
+                });
+            }
+        } catch (error) {
+            logger.error('Error processing AI response:', error);
         }
     }
 }

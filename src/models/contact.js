@@ -18,6 +18,7 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
         },
         name: DataTypes.STRING,
+        pic_url: DataTypes.STRING,
         is_bot_paused: {
             type: DataTypes.BOOLEAN,
             defaultValue: false,
