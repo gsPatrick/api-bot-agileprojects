@@ -15,11 +15,12 @@ class BotService {
             // LOG FULL WEBHOOK DATA FOR DEBUGGING
             logger.info('Received Webhook Data:', JSON.stringify(data, null, 2));
 
-            // Check for text message OR button response
+            // Check for text message, button response, OR audio
             const isText = data.text && data.text.message;
             const isButton = data.buttonsResponseMessage && data.buttonsResponseMessage.message;
+            const isAudio = data.audio;
 
-            if (!data.phone || (!isText && !isButton)) {
+            if (!data.phone || (!isText && !isButton && !isAudio)) {
                 return;
             }
 
@@ -32,8 +33,11 @@ class BotService {
                 return;
             }
 
-            // Extract message body from either text or button response
-            const messageBody = isText ? data.text.message : data.buttonsResponseMessage.message;
+            // Extract message body
+            let messageBody = '';
+            if (isText) messageBody = data.text.message;
+            else if (isButton) messageBody = data.buttonsResponseMessage.message;
+            else if (isAudio) messageBody = '🎤 [Áudio Recebido]';
             const fromMe = data.fromMe || false;
 
             // Fetch latest contact info from Z-API if it's an incoming message (or if we want to refresh)
@@ -120,6 +124,12 @@ class BotService {
 
             // DEBUG: Log current flow step
             logger.info(`Processing message for contact ${phone}. Current Flow Step: ${contact.flow_step}`);
+
+            // 4.1 Check for Audio (Block and Reply)
+            if (isAudio) {
+                await zapiService.sendText(contact.phone, "Desculpe, não consigo ouvir áudios. Por favor, digite sua resposta em texto.");
+                return;
+            }
 
             // RESET COMMAND FOR TESTING
             if (messageBody.trim().toLowerCase() === '#reset') {
